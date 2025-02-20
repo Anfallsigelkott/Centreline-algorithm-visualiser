@@ -1,18 +1,24 @@
 from scipy.spatial import Voronoi, voronoi_plot_2d
-import math
-from pynput import keyboard
+import numpy
 
 class VoronoiAlgorithm:
     def __init__(self):
         self.polylines = []
         self.points = []
-
+        self.closingLines = []
     def setPolylines(self, polylineXs, polylineYs):
         self.polylines = []
         for i in range(0, len(polylineXs)):
             self.polylines.append([])
             for j in range(0, len(polylineXs[i])):
                 self.polylines[i].append([polylineXs[i][j], polylineYs[i][j]])
+
+    def setClosingLines(self, closinglineStartEnds): # Special lines to close off segments, are only checked in the complex intersecting edges step (and might in the future have its intersections noted in some way to be used for reconstructing the map from segments)
+        if len(closinglineStartEnds) == 0:
+            return
+        if len(closinglineStartEnds[-1]) < 2:
+            closinglineStartEnds = closinglineStartEnds[:-1]
+        self.closingLines = closinglineStartEnds
 
     def isCounterclockwise(self, pointA: list[float], pointB: list[float], pointC: list[float]):
         return (pointC[1]-pointA[1]) * (pointB[0]-pointA[0]) > (pointB[1]-pointA[1]) * (pointC[0]-pointA[0])
@@ -30,30 +36,28 @@ class VoronoiAlgorithm:
 
         return cleanedEdges
     
-    def isNeighboringIndexInSamePolyline(self, index):
-        negativeNeighborPolylineIndex = -1
-        positiveNeighborPolylineIndex = -1
-        indexPolylineIndex = -1
+    def isNeighboringIndexInSamePolyline(self, index1, index2):
+        index1Polylineindex = -1
+        index2Polylineindex = -1
 
         polylineIndex = 0
         i = 0
         for polyline in self.polylines:
-            if i + len(polyline) < index - 1:
+            if i + len(polyline) < index1 - 1:
                 polylineIndex = polylineIndex + 1
                 i = i + len(polyline)
                 continue
             for polylineVertex in polyline:
-                if i == index-1:
-                    negativeNeighborPolylineIndex = polylineIndex
-                elif i == index:
-                    indexPolylineIndex = polylineIndex
-                elif i == index+1:
-                    positiveNeighborPolylineIndex = polylineIndex
-                    return positiveNeighborPolylineIndex == indexPolylineIndex or negativeNeighborPolylineIndex == indexPolylineIndex
+                if i == index1:
+                    index1Polylineindex = polylineIndex
+                if i == index2:
+                    index2Polylineindex = polylineIndex
+                if index1Polylineindex != -1 and index2Polylineindex != -1:
+                    return index1Polylineindex == index2Polylineindex
                 i = i + 1
             polylineIndex = polylineIndex + 1
 
-        return positiveNeighborPolylineIndex == indexPolylineIndex or negativeNeighborPolylineIndex == indexPolylineIndex
+        return index1Polylineindex == index2Polylineindex
 
 
     # Loop through the polyline vertices that define the voronoi diagram and remove any voronoi edges that lie between it and its polyline vertex neighbors, removes a majority of the intersecting polylines
@@ -61,17 +65,19 @@ class VoronoiAlgorithm:
         remainingIndices = set(range(0, len(voronoiEdges)))
         for i in range(0, len(voronoiEdgepoints)):
             if voronoiEdgepoints[i][0] == voronoiEdgepoints[i][1]-1 or voronoiEdgepoints[i][0] == voronoiEdgepoints[i][1]+1:
-                if self.isNeighboringIndexInSamePolyline(i):
+                if self.isNeighboringIndexInSamePolyline(voronoiEdgepoints[i][0], voronoiEdgepoints[i][1]):
                     remainingIndices.remove(i)
             if i % 100 == 0:
                 print("Loading Bar 1:", i, "/", len(voronoiEdgepoints))
         
         print("Remaining: ", remainingIndices)
-        remainingEdges = [] # Consider also if the edgePoints may be neccessary later and update them here
+        remainingEdges = []
+        remainingEdgepoints = []
         for index in remainingIndices:
             remainingEdges.append(voronoiEdges[index])
+            remainingEdgepoints.append(voronoiEdgepoints[index])
         
-        return remainingEdges
+        return remainingEdges, remainingEdgepoints
     
     def removeComplexIntersectingEdges(self, voronoiVertices, voronoiEdges): # TODO: Maybe line sweep this for improved time complexity
         remainingIndices = set(range(0, len(voronoiEdges)))
@@ -94,18 +100,38 @@ class VoronoiAlgorithm:
                 print("Loading Bar 2:", i, "/", len(voronoiEdges))
 
         print("Remaining: ", remainingIndices)
-        remainingEdges = [] # Consider also if the edgePoints may be neccessary later and update them here
+        remainingEdges = []
         for index in remainingIndices:
             remainingEdges.append(voronoiEdges[index])
         
         return remainingEdges
     
-    def removeComplexIntersectingEdgesLineSweep(self, voronoiVertices, voronoiEdges): # Went from around 11 hours to under 2 minutes for this step on Boliden-Kriberg, worth it
+    def removeComplexIntersectingEdgesLineSweep(self, voronoiVertices, voronoiEdges, voronoiEdgepoints): # Went from around 11 hours to under 2 minutes for this step on Boliden-Kriberg, very much worth it
+        #Setup for the infinite edge calculation, TODO: make this more generalised
+        center = numpy.mean(self.points, axis = 0)
+        minmaxPointLocations = numpy.ptp(self.points, axis = 0)
         events = []
+        edgeIndexVertexMapping = {} # This construction is made neccessary by the infinite edges
         i = 0
         for voronoiEdge in voronoiEdges:
             if voronoiEdge[0] == -1:
-                events.append((voronoiVertices[voronoiEdge[1]], "infEdgeStart", i)) # TODO: Deal with these later
+                # Finds the tangent and normal
+                print(voronoiEdgepoints[i])
+                t = [self.points[voronoiEdgepoints[i][1]][0] - self.points[voronoiEdgepoints[i][0]][0], self.points[voronoiEdgepoints[i][1]][1] - self.points[voronoiEdgepoints[i][0]][1]]
+                t = t / numpy.linalg.norm(t)
+                n = numpy.array([-t[1], t[0]])
+                midpoint = numpy.mean([self.points[voronoiEdgepoints[i][0]], self.points[voronoiEdgepoints[i][1]]], axis = 0)
+                subMidpointCenter = [midpoint[0] - center[0], midpoint[1] - center[1]]
+                direction = numpy.sign(numpy.dot(subMidpointCenter, n)) * n
+                infinitePoint = [voronoiVertices[voronoiEdge[1]][0] + direction[0] * numpy.max(minmaxPointLocations[0]), voronoiVertices[voronoiEdge[1]][1] + direction[1] * numpy.max(minmaxPointLocations[1])]
+
+                if infinitePoint[0] >= voronoiVertices[voronoiEdge[1]][0]:
+                    events.append((voronoiVertices[voronoiEdge[1]], "edgeStart", i))
+                    events.append((infinitePoint, "edgeEnd", i))
+                else:
+                    events.append((infinitePoint, "edgeStart", i))
+                    events.append((voronoiVertices[voronoiEdge[1]], "edgeEnd", i))
+                edgeIndexVertexMapping[i] = (infinitePoint, voronoiVertices[voronoiEdge[1]])
             else:
                 if voronoiVertices[voronoiEdge[1]][0] >= voronoiVertices[voronoiEdge[0]][0]:
                     events.append((voronoiVertices[voronoiEdge[0]], "edgeStart", i))
@@ -113,6 +139,7 @@ class VoronoiAlgorithm:
                 else:
                     events.append((voronoiVertices[voronoiEdge[1]], "edgeStart", i))
                     events.append((voronoiVertices[voronoiEdge[0]], "edgeEnd", i))
+                edgeIndexVertexMapping[i] = (voronoiVertices[voronoiEdge[0]], voronoiVertices[voronoiEdge[1]])
             i = i + 1
 
         i = 0
@@ -127,9 +154,18 @@ class VoronoiAlgorithm:
                     events.append((polyline[j], "polyEnd", i))
                 polylineSegments.append((polyline[j], polyline[j+1]))
                 i = i + 1
+        for closingLine in self.closingLines: # For now we simply treat these like normal polylines
+            if closingLine[1][0] >= closingLine[0][0]:
+                events.append((closingLine[0], "polyStart", i))
+                events.append((closingLine[1], "polyEnd", i))
+            else:
+                events.append((closingLine[1], "polyStart", i))
+                events.append((closingLine[0], "polyEnd", i))
+            polylineSegments.append((closingLine[0], closingLine[1]))
+            i = i + 1
+
 
         events.sort(key= lambda x: x[0][0])
-        #print(events)
 
         activePolySegments = set()
         activeEdgeSegments = set()
@@ -137,10 +173,10 @@ class VoronoiAlgorithm:
         remainingIndices = set(range(0, len(voronoiEdges)))
 
         for i in range(0, len(events)):
-            point, eventType, segmentID = events[i]
+            _, eventType, segmentID = events[i]
             if eventType == "edgeStart":
                 for activeSegment in activePolySegments:
-                    if self.isIntersecting(voronoiVertices[voronoiEdges[segmentID][0]], voronoiVertices[voronoiEdges[segmentID][1]], polylineSegments[activeSegment][0], polylineSegments[activeSegment][1]):
+                    if self.isIntersecting(edgeIndexVertexMapping[segmentID][0], edgeIndexVertexMapping[segmentID][1], polylineSegments[activeSegment][0], polylineSegments[activeSegment][1]):
                         #print("edge-poly intersect:", voronoiVertices[voronoiEdges[segmentID][0]], voronoiVertices[voronoiEdges[segmentID][1]], polylineSegments[activeSegment][0], polylineSegments[activeSegment][1], segmentID, activeSegment)
                         if segmentID in remainingIndices:
                             remainingIndices.remove(segmentID)
@@ -150,7 +186,7 @@ class VoronoiAlgorithm:
                 activeEdgeSegments.remove(segmentID)
             if eventType == "polyStart":
                 for activeSegment in activeEdgeSegments:
-                    if self.isIntersecting(voronoiVertices[voronoiEdges[activeSegment][0]], voronoiVertices[voronoiEdges[activeSegment][1]], polylineSegments[segmentID][0], polylineSegments[segmentID][1]):
+                    if self.isIntersecting(edgeIndexVertexMapping[activeSegment][0], edgeIndexVertexMapping[activeSegment][1], polylineSegments[segmentID][0], polylineSegments[segmentID][1]):
                         #print("poly-edge intersect:", voronoiVertices[voronoiEdges[activeSegment][0]], voronoiVertices[voronoiEdges[activeSegment][1]], polylineSegments[segmentID][0], polylineSegments[segmentID][1], segmentID, activeSegment)
                         if activeSegment in remainingIndices:
                             remainingIndices.remove(activeSegment)
@@ -162,40 +198,49 @@ class VoronoiAlgorithm:
 
         print("Remaining: ", remainingIndices)
         remainingEdges = []
+        infinitePoints = []
         for index in remainingIndices:
             remainingEdges.append(voronoiEdges[index])
-        
-        return remainingEdges
+            if voronoiEdges[index][0] == -1:
+                infinitePoints.append(edgeIndexVertexMapping[index][0])
+        return remainingEdges, infinitePoints
 
     def calculateCentreline(self):
         points = []
         for polyline in self.polylines:
             for point in polyline:
                 points.append(point)
+        self.points = points
         
         voronoi = Voronoi(points)    
         voronoiVertices = voronoi.vertices
         voronoiEdges = voronoi.ridge_vertices
         voronoiEdgepoints = voronoi.ridge_points
 
-        voronoiEdges = self.removeSimpleIntersectingEdges(voronoiEdges, voronoiEdgepoints)
+        voronoiEdges, voronoiEdgepoints = self.removeSimpleIntersectingEdges(voronoiEdges, voronoiEdgepoints)
         #print(voronoiVertices)
         #print(voronoiEdgepoints)
         #print(voronoiEdges)
 
 
         #voronoiEdges = self.removeComplexIntersectingEdges(voronoiVertices, voronoiEdges)
-        voronoiEdges = self.removeComplexIntersectingEdgesLineSweep(voronoiVertices, voronoiEdges)
-        print(voronoiEdges)
+        voronoiEdges, infinitePoints = self.removeComplexIntersectingEdgesLineSweep(voronoiVertices, voronoiEdges, voronoiEdgepoints)
+        #print(voronoiEdges)
+        #print(infinitePoints)
 
         centrelines = []
         for i in range(0, len(voronoiVertices)):
             centrelines.append([i, voronoiVertices[i][0], voronoiVertices[i][1], []])
         
+        infinteLines = []
+        infiniteIndex = 0
         for connection in voronoiEdges:
             if connection[0] != -1:
                 centrelines[connection[0]][3].append(connection[1])
                 centrelines[connection[1]][3].append(connection[0])
+            else:
+                infinteLines.append([infinitePoints[infiniteIndex], voronoiVertices[connection[1]]])
+                infiniteIndex += 1
 
-        return centrelines
+        return centrelines, infinteLines
 

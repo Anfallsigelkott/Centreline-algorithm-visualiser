@@ -13,7 +13,7 @@ class CentrelineAlgorithmVisualiser:
         self.canvas = self.figure.canvas
         
         self.axis.set_title("Centreline Algorithm Visualiser")
-        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, c = clear diagram, d = convert dxf to polyline format")
+        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, c = clear diagram, d = convert dxf to polyline format, a = run algorithm, lm = polyline, rm = closing line")
 
         self.axis.set_xlim(0, 100)
         self.axis.set_ylim(0, 100)
@@ -25,6 +25,11 @@ class CentrelineAlgorithmVisualiser:
 
         self.centrelineNodes = {}
         self.centrelinePlots = []
+
+        self.closingLines = []
+        self.closingLineStartEnds = [] # I've done these lines in three different ways... Oh well, this is only a prototyping tool
+
+        self.infiniteLines = []
 
         #button1Axis = self.figure.add_axes([0.7, 0.05, 0.1, 0.075])
         #button2Axis = self.figure.add_axes([0.81, 0.05, 0.1, 0.075])
@@ -86,11 +91,25 @@ class CentrelineAlgorithmVisualiser:
             self.axis.draw_artist(polyLine[0])
         for centreline in self.centrelinePlots:
             self.axis.draw_artist(centreline[0])
+        for closingLine in self.closingLines:
+            self.axis.draw_artist(closingLine[0])
+        for infiniteLine in self.infiniteLines:
+            self.axis.draw_artist(infiniteLine[0])
 
     def onPressedButton(self, event):
-        if (event.inaxes is None or event.button != MouseButton.LEFT):
+        if (event.inaxes is None or (event.button != MouseButton.LEFT and event.button != MouseButton.RIGHT)):
             return
-        self.addVertex(event.xdata, event.ydata)
+        if event.button == MouseButton.LEFT:
+            self.addVertex(event.xdata, event.ydata)
+        elif event.button == MouseButton.RIGHT:
+            if len(self.closingLineStartEnds) == 0:
+                self.closingLineStartEnds.append([[event.xdata, event.ydata]])
+            elif len(self.closingLineStartEnds[-1]) == 1:
+                self.closingLineStartEnds[-1].append([event.xdata, event.ydata])
+                self.closingLines.append(self.axis.plot([self.closingLineStartEnds[-1][0][0], self.closingLineStartEnds[-1][1][0]], [self.closingLineStartEnds[-1][0][1], self.closingLineStartEnds[-1][1][1]], color='gold', linewidth = 4, animated=True))
+            else:
+                self.closingLineStartEnds.append([[event.xdata, event.ydata]])
+
         self.canvas.draw()
 
     def onPressedKey(self, event):
@@ -205,6 +224,10 @@ class CentrelineAlgorithmVisualiser:
 
         self.centrelineNodes = {}
         self.centrelinePlots = []
+        self.infiniteLines = []
+
+        self.closingLines = []
+        self.closingLineStartEnds = []
 
         self.canvas.draw()
 
@@ -222,10 +245,17 @@ class CentrelineAlgorithmVisualiser:
         self.canvas.draw()
 
     def runVoronoiAlgorithm(self):
+        self.centrelineNodes = {}
+        self.centrelinePlots = []
+        self.infiniteLines = []
+
         self.voronoiAlgorithm.setPolylines(self.polylineVerticesX, self.polylineVerticesY)
-        centrelines = self.voronoiAlgorithm.calculateCentreline()
+        self.voronoiAlgorithm.setClosingLines(self.closingLineStartEnds)
+        centrelines, infiniteLines = self.voronoiAlgorithm.calculateCentreline()
         for centreline in centrelines:
             self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
+        for infiniteLine in infiniteLines:
+            self.infiniteLines.append(self.axis.plot([infiniteLine[0][0], infiniteLine[1][0]], [infiniteLine[0][1], infiniteLine[1][1]], color='red', linestyle='dashed', animated=True))
         self.displayCentreline()
         print("Voronoi Algorithm Completed")
 
