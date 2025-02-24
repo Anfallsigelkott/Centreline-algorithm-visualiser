@@ -1,5 +1,6 @@
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import numpy
+import sys
 
 class VoronoiAlgorithm:
     def __init__(self):
@@ -15,6 +16,7 @@ class VoronoiAlgorithm:
 
     def setClosingLines(self, closinglineStartEnds): # Special lines to close off segments, are only checked in the complex intersecting edges step (and might in the future have its intersections noted in some way to be used for reconstructing the map from segments)
         if len(closinglineStartEnds) == 0:
+            self.closingLines = []
             return
         if len(closinglineStartEnds[-1]) < 2:
             closinglineStartEnds = closinglineStartEnds[:-1]
@@ -197,6 +199,7 @@ class VoronoiAlgorithm:
                 print("Loading Bar 2:", i, "/", len(events))
 
         print("Remaining: ", remainingIndices)
+        print("Remaining lines: ", len(remainingIndices))
         remainingEdges = []
         infinitePoints = []
         for index in remainingIndices:
@@ -204,8 +207,41 @@ class VoronoiAlgorithm:
             if voronoiEdges[index][0] == -1:
                 infinitePoints.append(edgeIndexVertexMapping[index][0])
         return remainingEdges, infinitePoints
+    
+    def populateConnectionDictionary(self, voronoiEdges: list[list[int]], connections: dict[list[list[int]]]):
+        i = 0
+        for edge in voronoiEdges:
+            if edge[0] in connections:
+                connections[edge[0]].append([edge[1], i])
+            else:
+                connections[edge[0]] = [[edge[1], i]]
+            if edge[1] in connections:
+                connections[edge[1]].append([edge[0], i])
+            else:
+                connections[edge[1]] = [[edge[0], i]]
+            i += 1
+    
+    def removeConnectedEdges(self, connections: dict[list[list[int]]], remainingIndices: set, pointIndex):
+        for connection in connections[pointIndex]:
+            print(connection[1])
+            if connection[1] in remainingIndices:
+                remainingIndices.remove(connection[1])
+                self.removeConnectedEdges(connections, remainingIndices, connection[0])
+        #print(voronoiEdges, pointIndex)
+        # for i in range(0, len(voronoiEdges)):
+        #     if i not in remainingIndices:
+        #         continue
+        #     if voronoiEdges[i][0] == pointIndex:
+        #         if i in remainingIndices:
+        #             remainingIndices.remove(i)
+        #         self.removeConnectedEdges(voronoiEdges, remainingIndices, voronoiEdges[i][1])
+        #     elif voronoiEdges[i][1] == pointIndex:
+        #         if i in remainingIndices:
+        #             remainingIndices.remove(i)
+        #         self.removeConnectedEdges(voronoiEdges, remainingIndices, voronoiEdges[i][0])
 
     def calculateCentreline(self):
+        sys.setrecursionlimit(100000)
         points = []
         for polyline in self.polylines:
             for point in polyline:
@@ -217,7 +253,7 @@ class VoronoiAlgorithm:
         voronoiEdges = voronoi.ridge_vertices
         voronoiEdgepoints = voronoi.ridge_points
 
-        voronoiEdges, voronoiEdgepoints = self.removeSimpleIntersectingEdges(voronoiEdges, voronoiEdgepoints)
+        #voronoiEdges, voronoiEdgepoints = self.removeSimpleIntersectingEdges(voronoiEdges, voronoiEdgepoints)
         #print(voronoiVertices)
         #print(voronoiEdgepoints)
         #print(voronoiEdges)
@@ -227,6 +263,15 @@ class VoronoiAlgorithm:
         voronoiEdges, infinitePoints = self.removeComplexIntersectingEdgesLineSweep(voronoiVertices, voronoiEdges, voronoiEdgepoints)
         #print(voronoiEdges)
         #print(infinitePoints)
+        remainingIndices = set(range(0, len(voronoiEdges)))
+        connections = {}
+        self.populateConnectionDictionary(voronoiEdges, connections)
+        self.removeConnectedEdges(connections, remainingIndices, -1)
+        remainingEdges = []
+        for index in remainingIndices:
+            remainingEdges.append(voronoiEdges[index])
+        voronoiEdges = remainingEdges
+        print("Cut out centrelines")
 
         centrelines = []
         for i in range(0, len(voronoiVertices)):

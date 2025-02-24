@@ -259,6 +259,17 @@ class CentrelineAlgorithmVisualiser:
         self.displayCentreline()
         print("Voronoi Algorithm Completed")
 
+    def automaticClosingLineCreation(self):
+        maxClosingDistance = 20.0
+        points = []
+        for lines in zip(self.polylineVerticesX, self.polylineVerticesY):
+            for line in lines:
+                points.append(line[0])
+                points.append(line[-1])
+        
+        points.sort()
+        
+
 
 
 
