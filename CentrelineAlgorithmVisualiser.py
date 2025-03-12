@@ -13,7 +13,7 @@ class CentrelineAlgorithmVisualiser:
         self.canvas = self.figure.canvas
         
         self.axis.set_title("Centreline Algorithm Visualiser")
-        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, c = clear diagram, d = convert dxf to polyline format, a = run algorithm, lm = polyline, rm = closing line")
+        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, q = clear diagram, d = convert dxf to polyline format, a = run algorithm, c = automatic closing lines, lm = polyline, rm = closing line")
 
         self.axis.set_xlim(0, 100)
         self.axis.set_ylim(0, 100)
@@ -125,12 +125,14 @@ class CentrelineAlgorithmVisualiser:
             self.saveTestcase()
         if event.key == 'r':
             self.readPolylineFile()
-        if event.key == 'c':
+        if event.key == 'q':
             self.clearDiagram()
         if event.key == 'd':
             self.convertDXFToPolylineFile()
         if event.key == 'a':
             self.runVoronoiAlgorithm()
+        if event.key == 'c':
+            self.automaticClosingLineCreation()
 
     def readPolylineFile(self):
         input = list[str]()
@@ -260,15 +262,71 @@ class CentrelineAlgorithmVisualiser:
         print("Voronoi Algorithm Completed")
 
     def automaticClosingLineCreation(self):
-        maxClosingDistance = 20.0
+        maxClosingDistance = 50.0
         points = []
-        for lines in zip(self.polylineVerticesX, self.polylineVerticesY):
-            for line in lines:
-                points.append(line[0])
-                points.append(line[-1])
+        for i in range(0, len(self.polylineVerticesX)):
+            points.append([self.polylineVerticesX[i][0], self.polylineVerticesY[i][0]])
+            if len(self.polylineVerticesX[i]) > 1:
+                points.append([self.polylineVerticesX[i][-1], self.polylineVerticesY[i][-1]])
+
+        def distance(p1, p2):
+            return math.sqrt((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)
         
-        points.sort()
+        def closestPair(points):
+            if len(points) < 2:
+                return ([0, 0], [0, 0]), -1
+
+            points.sort()
+
+            def closestPairRecursion(start, end):
+                if end - start <= 3:
+                    minDist = math.inf
+                    closestPoints = None
+                    for i in range(start, end):
+                        for j in range(i+1, end):
+                            d = distance(points[i], points[j])
+                            if d < minDist:
+                                minDist = d
+                                closestPoints = (points[i], points[j])
+                    return closestPoints, minDist
+                
+                mid = (start + end) // 2
+                leftPair, leftDist = closestPairRecursion(start, mid)
+                rightPair, rightDist = closestPairRecursion(mid, end)
+
+                if leftDist < rightDist:
+                    minDist = leftDist
+                    closestPoints = leftPair
+                else:
+                    minDist = rightDist
+                    closestPoints = rightPair
+                
+                midX = points[mid][0]
+                strip = [p for p in points[start:end] if abs(p[0] - midX) < minDist]
+                strip.sort(key = lambda p: p[1])
+
+                for i in range(len(strip)):
+                    for j in range(i + 1, min(i + 7, len(strip))):
+                        d = distance(strip[i], strip[j])
+                        if d < minDist:
+                            minDist = d
+                            closestPoints = (strip[i], strip[j])
+                
+                return closestPoints, minDist
+            
+            return closestPairRecursion(0, len(points))
         
+        while True:
+            newClosingLinePoints, newClosingLineLength = closestPair(points)
+            if newClosingLineLength > maxClosingDistance or newClosingLineLength == -1:
+                break
+            self.closingLineStartEnds.append(newClosingLinePoints)
+            self.closingLines.append(self.axis.plot([self.closingLineStartEnds[-1][0][0], self.closingLineStartEnds[-1][1][0]], [self.closingLineStartEnds[-1][0][1], self.closingLineStartEnds[-1][1][1]], color='gold', linewidth = 4, animated=True))
+            points.remove(newClosingLinePoints[0])
+            points.remove(newClosingLinePoints[1])
+        
+        self.canvas.draw()
+
 
 
 
