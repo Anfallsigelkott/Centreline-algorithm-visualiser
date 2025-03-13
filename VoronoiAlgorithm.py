@@ -223,7 +223,6 @@ class VoronoiAlgorithm:
     
     def removeConnectedEdges(self, connections: dict[list[list[int]]], remainingIndices: set, pointIndex):
         for connection in connections[pointIndex]:
-            print(connection[1])
             if connection[1] in remainingIndices:
                 remainingIndices.remove(connection[1])
                 self.removeConnectedEdges(connections, remainingIndices, connection[0])
@@ -277,7 +276,7 @@ class VoronoiAlgorithm:
         for i in range(0, len(voronoiVertices)):
             centrelines.append([i, voronoiVertices[i][0], voronoiVertices[i][1], []])
         
-        infinteLines = []
+        infinteLines = [] # When "removeConnectedEdges" is run this will always be empty
         infiniteIndex = 0
         for connection in voronoiEdges:
             if connection[0] != -1:

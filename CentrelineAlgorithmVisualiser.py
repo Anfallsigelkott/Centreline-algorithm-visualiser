@@ -13,7 +13,7 @@ class CentrelineAlgorithmVisualiser:
         self.canvas = self.figure.canvas
         
         self.axis.set_title("Centreline Algorithm Visualiser")
-        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, q = clear diagram, d = convert dxf to polyline format, a = run algorithm, c = automatic closing lines, lm = polyline, rm = closing line")
+        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, l = clear diagram, d = convert dxf to polyline format, a = run algorithm, c = automatic closing lines, y = even out polylines, lm = polyline, rm = closing line")
 
         self.axis.set_xlim(0, 100)
         self.axis.set_ylim(0, 100)
@@ -125,7 +125,7 @@ class CentrelineAlgorithmVisualiser:
             self.saveTestcase()
         if event.key == 'r':
             self.readPolylineFile()
-        if event.key == 'q':
+        if event.key == 'l':
             self.clearDiagram()
         if event.key == 'd':
             self.convertDXFToPolylineFile()
@@ -133,6 +133,8 @@ class CentrelineAlgorithmVisualiser:
             self.runVoronoiAlgorithm()
         if event.key == 'c':
             self.automaticClosingLineCreation()
+        if event.key == 'y':
+            self.evenOutPolylines()
 
     def readPolylineFile(self):
         input = list[str]()
@@ -262,7 +264,7 @@ class CentrelineAlgorithmVisualiser:
         print("Voronoi Algorithm Completed")
 
     def automaticClosingLineCreation(self):
-        maxClosingDistance = 50.0
+        maxClosingDistance = 25.0
         points = []
         for i in range(0, len(self.polylineVerticesX)):
             points.append([self.polylineVerticesX[i][0], self.polylineVerticesY[i][0]])
@@ -312,11 +314,12 @@ class CentrelineAlgorithmVisualiser:
                             minDist = d
                             closestPoints = (strip[i], strip[j])
                 
-                return closestPoints, minDist
+                return closestPoints, minDist #120, 1416  -2500, 3000
             
             return closestPairRecursion(0, len(points))
         
         while True:
+            print("Closing lines loading, max # points left:", len(points))
             newClosingLinePoints, newClosingLineLength = closestPair(points)
             if newClosingLineLength > maxClosingDistance or newClosingLineLength == -1:
                 break
@@ -326,6 +329,79 @@ class CentrelineAlgorithmVisualiser:
             points.remove(newClosingLinePoints[1])
         
         self.canvas.draw()
+
+    def cutOutTestCasePart(self):
+        print("Cutting out part")
+        minX = -2500
+        minY = 1416
+        maxX = 120
+        maxY = 3000
+        newPolylineVerticesX = []
+        newPolylineVerticesY = []
+        for i in range(0, len(self.polylineVerticesX)):
+            print("Loading cut: ", i, "/", len(self.polylineVerticesX))
+            newPolylineVerticesX.append([])
+            newPolylineVerticesY.append([])
+            for j in range(0, len(self.polylineVerticesX[i])):
+                if minX < self.polylineVerticesX[i][j] < maxX and minY < self.polylineVerticesY[i][j] < maxY:
+                    newPolylineVerticesX[i].append(self.polylineVerticesX[i][j])
+                    newPolylineVerticesY[i].append(self.polylineVerticesY[i][j])
+        
+        self.polylineIndex = 0
+        self.polyLines = []
+        self.polylineVerticesX = []
+        self.polylineVerticesY = []
+        for i in range(0, len(newPolylineVerticesX)):
+            for j in range(0, len(newPolylineVerticesX[i])):
+                self.addVertex(newPolylineVerticesX[i][j], newPolylineVerticesY[i][j])
+            self.incrementPolylineIndex()
+
+        self.canvas.draw()
+
+    def evenOutPolylines(self):
+        def distance(x1, y1, x2, y2):
+            return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+        
+        def lerp2D(x1, y1, x2, y2, f):
+            x = (x1 * (1.0 - f)) + (x2 * f)
+            y = (y1 * (1.0 - f)) + (y2 * f)
+            return x, y
+        
+        minPointDistance = 1.0
+        newPolylineVerticesX = []
+        newPolylineVerticesY = []
+
+        for i in range(0, len(self.polylineVerticesX)):
+            print("Evening out polyline: ", i, "/", len(self.polylineVerticesX))
+            newPolylineVerticesX.append([])
+            newPolylineVerticesY.append([])
+            for j in range(0, len(self.polylineVerticesX[i])-1):
+                newPolylineVerticesX[i].append(self.polylineVerticesX[i][j])
+                newPolylineVerticesY[i].append(self.polylineVerticesY[i][j])
+                dist = distance(self.polylineVerticesX[i][j], self.polylineVerticesY[i][j], self.polylineVerticesX[i][j+1], self.polylineVerticesY[i][j+1])
+                if dist > minPointDistance:
+                    pieces = round(dist / minPointDistance)
+                    fraction = 1 / pieces
+                    for pieceNum in range(1, pieces):
+                        x, y = lerp2D(self.polylineVerticesX[i][j], self.polylineVerticesY[i][j], self.polylineVerticesX[i][j+1], self.polylineVerticesY[i][j+1], fraction * pieceNum)
+                        newPolylineVerticesX[i].append(x)
+                        newPolylineVerticesY[i].append(y)
+            
+            newPolylineVerticesX[i].append(self.polylineVerticesX[i][-1])
+            newPolylineVerticesY[i].append(self.polylineVerticesY[i][-1])
+
+        self.polylineIndex = 0
+        self.polyLines = []
+        self.polylineVerticesX = []
+        self.polylineVerticesY = []
+        for i in range(0, len(newPolylineVerticesX)):
+            for j in range(0, len(newPolylineVerticesX[i])):
+                self.addVertex(newPolylineVerticesX[i][j], newPolylineVerticesY[i][j])
+            self.incrementPolylineIndex()
+
+        self.canvas.draw()
+
+                        
 
 
 
