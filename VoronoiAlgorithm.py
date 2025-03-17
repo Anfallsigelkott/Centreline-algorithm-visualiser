@@ -1,3 +1,4 @@
+import math
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import numpy
 import sys
@@ -239,6 +240,55 @@ class VoronoiAlgorithm:
         #             remainingIndices.remove(i)
         #         self.removeConnectedEdges(voronoiEdges, remainingIndices, voronoiEdges[i][0])
 
+    # 1. Loop through the centreline points
+    # 2. For each centreline point, check the number of connections. If it's more than 2 it is a crossing.
+    # 3. On a crossing: Recursively check the distance of each connecting path, if the distance exceeds a minimum value (say: 10 meters): break; If the path ends without exceeding the value: Remove the path
+
+    def removeShortPathsFromCrossings(self, centrelines, minLength):
+        remainingIndices = set(range(0, len(centrelines)))
+        for centreline in centrelines:
+            if len(centreline[3]) > 2: # The voronoi vertex is a crossing
+                for connection in centreline[3]:
+                    distance = math.sqrt((centreline[1] - centrelines[connection][1])**2 + (centreline[2] - centrelines[connection][2])**2)
+                    self.doesLengthOfPathExceedMinimum(centrelines, connection, minLength, distance, centreline[0], remainingIndices)
+
+        remainingCentrelines = []
+        for index in remainingIndices:
+            remainingCentrelines.append(centrelines[index])
+
+        removedIndices = set(range(0, len(centrelines))).difference(remainingIndices)
+        print("removed indices:", removedIndices)
+        for centreline in remainingCentrelines:
+            newConnections = centreline[3][:]
+            for connection in centreline[3]:
+                if connection in removedIndices:
+                    newConnections.remove(connection)
+            centreline[3] = newConnections
+        return remainingCentrelines
+    
+    def doesLengthOfPathExceedMinimum(self, centrelines, nodeID, minLength, length, latestNode, remainingIndices):
+        if length >= minLength:
+            return True
+        
+        if len(centrelines[nodeID][3]) == 1: # End of a path
+            if nodeID in remainingIndices:
+                remainingIndices.remove(nodeID)
+            return False
+        
+        longEnough = False
+        for connection in centrelines[nodeID][3]:
+            if connection != latestNode:
+                distance = math.sqrt((centrelines[nodeID][1] - centrelines[connection][1])**2 + (centrelines[nodeID][2] - centrelines[connection][2])**2)
+                if self.doesLengthOfPathExceedMinimum(centrelines, connection, minLength, length+distance, nodeID, remainingIndices):
+                    longEnough = True
+        
+        if longEnough:
+            return True
+        else:
+            if nodeID in remainingIndices:
+                remainingIndices.remove(nodeID)
+            return False
+
     def calculateCentreline(self):
         sys.setrecursionlimit(100000)
         points = []
@@ -285,6 +335,8 @@ class VoronoiAlgorithm:
             else:
                 infinteLines.append([infinitePoints[infiniteIndex], voronoiVertices[connection[1]]])
                 infiniteIndex += 1
+        
+        centrelines = self.removeShortPathsFromCrossings(centrelines, 10)
 
         return centrelines, infinteLines
 
