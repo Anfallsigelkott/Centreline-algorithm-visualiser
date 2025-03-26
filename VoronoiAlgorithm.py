@@ -323,6 +323,31 @@ class VoronoiAlgorithm:
         
         print("The length of the centreline is", len(remainingCentrelines), "nodes. Removed", len(centrelines)-len(remainingCentrelines), "nodes")
         return remainingCentrelines
+    
+    # 1. Find all crossings and endpoints of the centreline and set these as nodes
+    # 2. Recursively explore the centreline nodes between each connection between two crossings/endpoints
+    # 3. Split the line consisting of the connected centreline nodes into segments with a length equal to the ideal distance between nodes (e.g. 5m)
+    # 4. Perform linear regression on the nodes of each segment and place a node connected to the neighboring segments/endpoint/crossing in the "middle" of the aquired line
+    def constructNodeGraphFromCentreline(self, centrelines):
+        centrelineNodeIDtoIndex = {}
+        for i in range(0, len(centrelines)):
+            centrelineNodeIDtoIndex[centrelines[i][0]] = i
+
+        crossingsAndEndpoints = []
+        for centreline in centrelines:
+            if len(centreline[3]) > 2 or len(centreline[3]) == 1: # The voronoi vertex is a crossing or an endpoint
+                crossingsAndEndpoints.append(centreline)
+
+        return crossingsAndEndpoints
+
+    def findCentrelineNodesBetweenCrossings(self, currentCentrelineNode, previousNodeID, nodesBetweenCrossings, centrelines, centrelineNodeIDtoIndex):
+        if len(currentCentrelineNode[3]) > 2 or len(currentCentrelineNode[3]) == 1:
+            return nodesBetweenCrossings, currentCentrelineNode[0]
+        
+        nodesBetweenCrossings.append(currentCentrelineNode)
+        for connection in currentCentrelineNode[3]:
+            if connection != previousNodeID:
+                return self.findCentrelineNodesBetweenCrossings(centrelines[centrelineNodeIDtoIndex[connection]], currentCentrelineNode[0], nodesBetweenCrossings, centrelines, centrelineNodeIDtoIndex)
 
 
 

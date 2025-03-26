@@ -54,7 +54,6 @@ class CentrelineAlgorithmVisualiser:
 
 
     def addVertex(self, x, y):
-        #print(x,y)
         if (self.polylineIndex == len(self.polyLines)):
             self.newPolyline(x, y)
             return
@@ -185,7 +184,6 @@ class CentrelineAlgorithmVisualiser:
                 lines[str(centrelineNodeID) + ":" + str(nodeID)] = [[centrelineNode[0], self.centrelineNodes[nodeID][0]], [centrelineNode[1], self.centrelineNodes[nodeID][1]]]
         
         for _,line in lines.items():
-            #print(line)
             self.centrelinePlots.append(self.axis.plot(line[0], line[1],  marker='o', color='red', animated=True))
 
         self.canvas.draw()
