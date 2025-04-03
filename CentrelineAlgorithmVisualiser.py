@@ -23,6 +23,11 @@ class CentrelineAlgorithmVisualiser:
         self.polylineVerticesX = []
         self.polylineVerticesY = []
 
+        self.storedPolylineIndex = 0
+        self.storedPolyLines = []
+        self.storedPolylineVerticesX = []
+        self.storedPolylineVerticesY = []
+
         self.centrelineNodes = {}
         self.centrelinePlots = []
 
@@ -365,7 +370,26 @@ class CentrelineAlgorithmVisualiser:
             y = (y1 * (1.0 - f)) + (y2 * f)
             return x, y
         
-        minPointDistance = 1.0
+        # Allows toggling between evened and unevened versions of the mine map
+        if len(self.storedPolyLines) > 0:
+            self.polylineIndex = self.storedPolylineIndex
+            self.polyLines = self.storedPolyLines[:]
+            self.polylineVerticesX = self.storedPolylineVerticesX[:]
+            self.polylineVerticesY = self.storedPolylineVerticesY[:]
+            self.storedPolylineIndex = 0
+            self.storedPolyLines = []
+            self.storedPolylineVerticesX = []
+            self.storedPolylineVerticesY = []
+            
+            self.canvas.draw()
+            return
+        
+        self.storedPolylineIndex = self.polylineIndex
+        self.storedPolyLines = self.polyLines[:]
+        self.storedPolylineVerticesX = self.polylineVerticesX[:]
+        self.storedPolylineVerticesY = self.polylineVerticesY[:]
+
+        minPointDistance = 1
         newPolylineVerticesX = []
         newPolylineVerticesY = []
 
