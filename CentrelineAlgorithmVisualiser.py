@@ -52,7 +52,7 @@ class CentrelineAlgorithmVisualiser:
         self.canvas.mpl_connect('key_press_event', self.onPressedKey)
         self.canvas.mpl_connect('scroll_event', self.scrollbarZoom)
 
-        self.voronoiAlgorithm = VoronoiAlgorithm()
+        self.voronoiAlgorithm = VoronoiAlgorithm(6, 4, math.pi/4)
 
         plt.subplots_adjust(left=0.04, bottom=0.06, right=0.97, top=0.94)
         plt.show()
@@ -139,6 +139,18 @@ class CentrelineAlgorithmVisualiser:
             self.automaticClosingLineCreation()
         if event.key == 'y':
             self.evenOutPolylines()
+        if event.key == '1':
+            self.demoStep1()
+        if event.key == '2':
+            self.demoStep2()
+        if event.key == '3':
+            self.demoStep3()
+        if event.key == '4':
+            self.demoStep4()
+        if event.key == '5':
+            self.demoStep5()
+        if event.key == '6':
+            self.demoStep6()
 
     def readPolylineFile(self):
         input = list[str]()
@@ -380,7 +392,7 @@ class CentrelineAlgorithmVisualiser:
             self.storedPolyLines = []
             self.storedPolylineVerticesX = []
             self.storedPolylineVerticesY = []
-            
+
             self.canvas.draw()
             return
         
@@ -423,7 +435,82 @@ class CentrelineAlgorithmVisualiser:
 
         self.canvas.draw()
 
-                        
+
+    ##### FUNCTIONS BELOW ARE FOR DEMO PURPOSES #####
+    def demoStep1(self):
+        self.centrelineNodes = {}
+        self.centrelinePlots = []
+        self.infiniteLines = []
+
+        self.voronoiAlgorithm.setPolylines(self.polylineVerticesX, self.polylineVerticesY)
+        self.voronoiAlgorithm.setClosingLines(self.closingLineStartEnds)
+        centrelines, infiniteLines = self.voronoiAlgorithm.demoStep1()
+        for centreline in centrelines:
+            self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
+        for infiniteLine in infiniteLines:
+            self.infiniteLines.append(self.axis.plot([infiniteLine[0][0], infiniteLine[1][0]], [infiniteLine[0][1], infiniteLine[1][1]], color='red', linestyle='dashed', animated=True))
+        self.displayCentreline()
+        print("Step 1 Completed")
+
+    def demoStep2(self): # Can be run without running step 1
+        self.centrelineNodes = {}
+        self.centrelinePlots = []
+        self.infiniteLines = []
+
+        self.voronoiAlgorithm.setPolylines(self.polylineVerticesX, self.polylineVerticesY)
+        self.voronoiAlgorithm.setClosingLines(self.closingLineStartEnds)
+        centrelines, infiniteLines = self.voronoiAlgorithm.demoStep2()
+        for centreline in centrelines:
+            self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
+        for infiniteLine in infiniteLines:
+            self.infiniteLines.append(self.axis.plot([infiniteLine[0][0], infiniteLine[1][0]], [infiniteLine[0][1], infiniteLine[1][1]], color='red', linestyle='dashed', animated=True))
+        self.displayCentreline()
+        print("Step 2 Completed")
+
+    def demoStep3(self):
+        self.centrelineNodes = {}
+        self.centrelinePlots = []
+
+        centrelines, _ = self.voronoiAlgorithm.demoStep3()
+        for centreline in centrelines:
+            self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
+
+        self.displayCentreline()
+        print("Step 3 Completed")
+
+    def demoStep4(self):
+        self.centrelineNodes = {}
+        self.centrelinePlots = []
+
+        centrelines, _ = self.voronoiAlgorithm.demoStep4()
+        for centreline in centrelines:
+            self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
+
+        self.displayCentreline()
+        print("Step 4 Completed")
+
+    def demoStep5(self):
+        self.centrelineNodes = {}
+        self.centrelinePlots = []
+
+        centrelines, _ = self.voronoiAlgorithm.demoStep5()
+        for centreline in centrelines:
+            self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
+
+        self.displayCentreline()
+        print("Step 5 Completed")
+
+    def demoStep6(self):
+        self.centrelineNodes = {}
+        self.centrelinePlots = []
+
+        centrelines, _ = self.voronoiAlgorithm.demoStep6()
+        for centreline in centrelines:
+            self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
+
+        self.displayCentreline()
+        print("Step 6 Completed")
+                            
 
 
 

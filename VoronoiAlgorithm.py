@@ -4,10 +4,16 @@ import numpy
 import sys
 
 class VoronoiAlgorithm:
-    def __init__(self):
+    def __init__(self, minPathLength, minLengthBetweenNodes, threeWayCrossingToleranceRad):
         self.polylines = []
         self.points = []
         self.closingLines = []
+        self.centrelines = []
+
+        self.minPathLength = minPathLength
+        self.minLengthBetweenNodes = minLengthBetweenNodes
+        self.threeWayCrossingToleranceRad = threeWayCrossingToleranceRad
+
     def setPolylines(self, polylineXs, polylineYs):
         self.polylines = []
         for i in range(0, len(polylineXs)):
@@ -190,7 +196,7 @@ class VoronoiAlgorithm:
             if eventType == "polyEnd":
                 activePolySegments.remove(segmentID)
             if i % 100 == 0:
-                print("Loading Bar 2:", i, "/", len(events))
+                print("Loading Bar Linesweep:", i, "/", len(events))
 
         print("Remaining lines after removing intersections: ", len(remainingIndices))
         remainingEdges = []
@@ -360,17 +366,18 @@ class VoronoiAlgorithm:
                     nodesBetweenCrossings = []
                     otherCrossingID = self.findCentrelineNodesBetweenCrossings(centrelines[centrelineNodeIDtoIndex[connection]], crossing[0], nodesBetweenCrossings, centrelines, centrelineNodeIDtoIndex)
                     if len(nodesBetweenCrossings) == 0:
-                        nodeGraph[crossing[0]][3].append(otherCrossingID)
-                        nodeGraph[otherCrossingID][3].append(crossing[0])
+                        if otherCrossingID not in nodeGraph[crossing[0]][3]:
+                            nodeGraph[crossing[0]][3].append(otherCrossingID)
+                            nodeGraph[otherCrossingID][3].append(crossing[0])
                         continue 
 
                     exploredCrossingAdjacentCentrelineNodes.add(nodesBetweenCrossings[0][0])
                     exploredCrossingAdjacentCentrelineNodes.add(nodesBetweenCrossings[-1][0])
-
-                    centrelineNodeSegments = self.splitCentrelineNodesIntoSegments(nodesBetweenCrossings, minLengthBetweenNodes)
+                    centrelineNodeSegments = self.splitCentrelineNodesIntoSegments(nodesBetweenCrossings, minLengthBetweenNodes, crossing, nodeGraph[otherCrossingID])
                     if len(centrelineNodeSegments) == 0:
-                        nodeGraph[crossing[0]][3].append(otherCrossingID)
-                        nodeGraph[otherCrossingID][3].append(crossing[0])
+                        if otherCrossingID not in nodeGraph[crossing[0]][3]:
+                            nodeGraph[crossing[0]][3].append(otherCrossingID)
+                            nodeGraph[otherCrossingID][3].append(crossing[0])
                         continue
                     
                     # Take out the centre node of each centreline segment
@@ -379,7 +386,6 @@ class VoronoiAlgorithm:
                         node = segment[len(segment)//2][:]
                         node[3] = []
                         nodesBetweenCrossings.append(node)
-                    
                     # Connect the nodes from the segments
                     nodeGraph[crossing[0]][3].append(nodesBetweenCrossings[0][0])
                     nodesBetweenCrossings[0][3].append(crossing[0])
@@ -395,7 +401,6 @@ class VoronoiAlgorithm:
         nodeGraphList = []
         for node in nodeGraph.values():
             nodeGraphList.append(node)
-
         return nodeGraphList
     
 
@@ -409,10 +414,15 @@ class VoronoiAlgorithm:
                 return self.findCentrelineNodesBetweenCrossings(centrelines[centrelineNodeIDtoIndex[connection]], currentCentrelineNode[0], nodesBetweenCrossings, centrelines, centrelineNodeIDtoIndex)
 
 
-    def splitCentrelineNodesIntoSegments(self, nodesBetweenCrossings, minLength):
+    def splitCentrelineNodesIntoSegments(self, nodesBetweenCrossings, minLength, crossing, otherCrossing):
         # This is a trivial solution that just traverses the nodes and cuts out a new segment when the minimum length has been passed. If this causes problems with nodes being too close together or far apart at the ends it may need to be changed
         segments = []
         segment = [nodesBetweenCrossings[0]]
+
+        if math.sqrt((segment[0][1] - crossing[1])**2 + (segment[0][2] - crossing[2])**2) >= minLength:
+            segments.append(segment)
+            segment = []
+
         length = 0
         for i in range(1, len(nodesBetweenCrossings)):
             segment.append(nodesBetweenCrossings[i])
@@ -423,8 +433,65 @@ class VoronoiAlgorithm:
                 segment = []
                 length = 0
 
+        totalNodes = 0
+        for seg in segments:
+            totalNodes += len(seg)
+
         return segments
     
+
+    def adjustThreeWayCrossings(self, nodegraph, parallelAngleRadians):
+        def lerp2D(x1, y1, x2, y2, f):
+            x = (x1 * (1.0 - f)) + (x2 * f)
+            y = (y1 * (1.0 - f)) + (y2 * f)
+            return x, y
+
+        nodeGraphIDtoIndex = {}
+        for i in range(0, len(nodegraph)):
+            nodeGraphIDtoIndex[nodegraph[i][0]] = i
+        
+        threeWayCrossings = []
+        for node in nodegraph:
+            if len(node[3]) == 3:
+                threeWayCrossings.append(node) 
+
+        for crossing in threeWayCrossings:
+            cX = crossing[1]
+            cY = crossing[2]
+            mostParallelAngleFound = math.inf
+            parAngX1 = 0
+            parAngY1 = 0
+            parAngX2 = 0
+            parAngY2 = 0
+            for connection1 in crossing[3]:
+                for connection2 in crossing[3]:
+                    if connection1 == connection2:
+                        continue
+
+                    x1 = nodegraph[nodeGraphIDtoIndex[connection1]][1]
+                    y1 = nodegraph[nodeGraphIDtoIndex[connection1]][2]
+                    x2 = nodegraph[nodeGraphIDtoIndex[connection2]][1]
+                    y2 = nodegraph[nodeGraphIDtoIndex[connection2]][2]
+                    angle1 = math.atan2(y1-cY, x1-cX)
+                    angle2 = math.atan2(y2-cY, x2-cX)
+                    angleParallel = abs((angle1%(2*math.pi)-angle2%(2*math.pi)) - math.pi)
+
+                    if angleParallel < mostParallelAngleFound:
+                        mostParallelAngleFound = angleParallel
+                        parAngX1 = x1
+                        parAngY1 = y1
+                        parAngX2 = x2
+                        parAngY2 = y2
+
+            if mostParallelAngleFound <= parallelAngleRadians:
+                length1 = math.sqrt((parAngX1 - cX)**2 + (parAngY1 - cY)**2)
+                length2 = math.sqrt((parAngX2 - cX)**2 + (parAngY2 - cY)**2)
+                lengthFraction = length1/(length1+length2)
+                cX, cY = lerp2D(parAngX1, parAngY1, parAngX2, parAngY2, lengthFraction)
+                nodegraph[nodeGraphIDtoIndex[crossing[0]]][1] = cX
+                nodegraph[nodeGraphIDtoIndex[crossing[0]]][2] = cY
+
+        return nodegraph    
 
     def calculateCentreline(self):
         sys.setrecursionlimit(100000)
@@ -438,7 +505,6 @@ class VoronoiAlgorithm:
         voronoiVertices = voronoi.vertices
         voronoiEdges = voronoi.ridge_vertices
         voronoiEdgepoints = voronoi.ridge_points
-
 
         voronoiEdges, infinitePoints = self.removeComplexIntersectingEdgesLineSweep(voronoiVertices, voronoiEdges, voronoiEdgepoints)
 
@@ -466,11 +532,121 @@ class VoronoiAlgorithm:
                 infinteLines.append([infinitePoints[infiniteIndex], voronoiVertices[connection[1]]])
                 infiniteIndex += 1
 
-        centrelines = self.removeShortPathsFromCrossings(centrelines, 6)
+        centrelines = self.removeShortPathsFromCrossings(centrelines, self.minPathLength)
 
         centrelines = self.removeNonMaximalCentreline(centrelines)
 
-        centrelines = self.constructNodeGraphFromCentreline(centrelines, 5)
+        centrelines = self.constructNodeGraphFromCentreline(centrelines, self.minLengthBetweenNodes) 
+        centrelines = self.constructNodeGraphFromCentreline(centrelines, self.minLengthBetweenNodes) # Running it twice is a bit of a hack, but it makes for a better graph
+
+        centrelines = self.adjustThreeWayCrossings(centrelines, self.threeWayCrossingToleranceRad)
 
         return centrelines, infinteLines
+    
+    ######## THE FUNCTIONS BELOW ARE ONLY FOR DEMO PURPOSES, THEY SEPARATE calculateCentreline INTO STEPS#######
+    def demoStep1(self): # Removes all line that cross mine tunnel walls
+        sys.setrecursionlimit(100000)
+        points = []
+        for polyline in self.polylines:
+            for point in polyline:
+                points.append(point)
+        self.points = points
+        
+        voronoi = Voronoi(points)    
+        voronoiVertices = voronoi.vertices
+        voronoiEdges = voronoi.ridge_vertices
+        voronoiEdgepoints = voronoi.ridge_points
+
+        voronoiEdges, infinitePoints = self.removeComplexIntersectingEdgesLineSweep(voronoiVertices, voronoiEdges, voronoiEdgepoints)
+
+        remainingIndices = set(range(0, len(voronoiEdges)))
+        connections = {}
+        self.populateConnectionDictionary(voronoiEdges, connections)
+        #self.removeConnectedEdges(connections, remainingIndices, -1)
+        remainingEdges = []
+        for index in remainingIndices:
+            remainingEdges.append(voronoiEdges[index])
+        voronoiEdges = remainingEdges
+        print("Cut out centrelines that are outside the mine tunnels. Remaining lines:", len(remainingEdges))
+
+        centrelines = []
+        for i in range(0, len(voronoiVertices)):
+            centrelines.append([i, voronoiVertices[i][0], voronoiVertices[i][1], []])
+        
+        infinteLines = [] # When "removeConnectedEdges" is run this will always be empty
+        infiniteIndex = 0
+        for connection in voronoiEdges:
+            if connection[0] != -1:
+                centrelines[connection[0]][3].append(connection[1])
+                centrelines[connection[1]][3].append(connection[0])
+            else:
+                infinteLines.append([infinitePoints[infiniteIndex], voronoiVertices[connection[1]]])
+                infiniteIndex += 1
+
+        self.centrelines = centrelines
+
+        return centrelines, infinteLines
+    
+    def demoStep2(self): # Could be immediately, it's the same as step1 except it removes lines connected to infinity 
+        sys.setrecursionlimit(100000)
+        points = []
+        for polyline in self.polylines:
+            for point in polyline:
+                points.append(point)
+        self.points = points
+        
+        voronoi = Voronoi(points)    
+        voronoiVertices = voronoi.vertices
+        voronoiEdges = voronoi.ridge_vertices
+        voronoiEdgepoints = voronoi.ridge_points
+
+        voronoiEdges, infinitePoints = self.removeComplexIntersectingEdgesLineSweep(voronoiVertices, voronoiEdges, voronoiEdgepoints)
+
+        remainingIndices = set(range(0, len(voronoiEdges)))
+        connections = {}
+        self.populateConnectionDictionary(voronoiEdges, connections)
+        self.removeConnectedEdges(connections, remainingIndices, -1)
+        remainingEdges = []
+        for index in remainingIndices:
+            remainingEdges.append(voronoiEdges[index])
+        voronoiEdges = remainingEdges
+        print("Cut out centrelines that are outside the mine tunnels. Remaining lines:", len(remainingEdges))
+
+        centrelines = []
+        for i in range(0, len(voronoiVertices)):
+            centrelines.append([i, voronoiVertices[i][0], voronoiVertices[i][1], []])
+        
+        infinteLines = [] # When "removeConnectedEdges" is run this will always be empty
+        infiniteIndex = 0
+        for connection in voronoiEdges:
+            if connection[0] != -1:
+                centrelines[connection[0]][3].append(connection[1])
+                centrelines[connection[1]][3].append(connection[0])
+            else:
+                infinteLines.append([infinitePoints[infiniteIndex], voronoiVertices[connection[1]]])
+                infiniteIndex += 1
+
+        self.centrelines = centrelines
+
+        return centrelines, infinteLines
+    
+    def demoStep3(self):
+        self.centrelines = self.removeShortPathsFromCrossings(self.centrelines, self.minPathLength)
+        return self.centrelines, []
+
+    def demoStep4(self):
+        self.centrelines = self.removeNonMaximalCentreline(self.centrelines)
+        return self.centrelines, []
+    
+    def demoStep5(self):
+        self.centrelines = self.constructNodeGraphFromCentreline(self.centrelines, self.minLengthBetweenNodes)
+        self.centrelines = self.constructNodeGraphFromCentreline(self.centrelines, self.minLengthBetweenNodes) # Running it twice is a bit of a hack, but it makes for a better graph
+        return self.centrelines, []
+    
+    def demoStep6(self):
+        self.centrelines = self.adjustThreeWayCrossings(self.centrelines, self.threeWayCrossingToleranceRad)
+        return self.centrelines, []
+
+        
+
 
