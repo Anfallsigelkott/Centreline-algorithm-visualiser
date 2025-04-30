@@ -2,6 +2,7 @@ import math
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import numpy
 import sys
+import time
 
 class VoronoiAlgorithm:
     def __init__(self, minPathLength, minLengthBetweenNodes, threeWayCrossingToleranceRad):
@@ -34,84 +35,11 @@ class VoronoiAlgorithm:
     
     def isIntersecting(self, line1Start: list[float], line1End: list[float], line2Start: list[float], line2End: list[float]): # This code doesn't handle colinearity but hopefully that won't be necessary
         return self.isCounterclockwise(line1Start, line2Start, line2End) != self.isCounterclockwise(line1End, line2Start, line2End) and self.isCounterclockwise(line1Start, line1End, line2Start) != self.isCounterclockwise(line1Start, line1End, line2End)
-    
-    def clearInfiniteEdges(self, voronoiEdges):
-        cleanedEdges = []
-        for edge in voronoiEdges:
-            if edge[0] == -1 or edge[1] == -1:
-                continue
-            cleanedEdges.append(edge)
 
-        return cleanedEdges
-    
-    def isNeighboringIndexInSamePolyline(self, index1, index2):
-        index1Polylineindex = -1
-        index2Polylineindex = -1
-
-        polylineIndex = 0
-        i = 0
-        for polyline in self.polylines:
-            if i + len(polyline) < index1 - 1:
-                polylineIndex = polylineIndex + 1
-                i = i + len(polyline)
-                continue
-            for polylineVertex in polyline:
-                if i == index1:
-                    index1Polylineindex = polylineIndex
-                if i == index2:
-                    index2Polylineindex = polylineIndex
-                if index1Polylineindex != -1 and index2Polylineindex != -1:
-                    return index1Polylineindex == index2Polylineindex
-                i = i + 1
-            polylineIndex = polylineIndex + 1
-
-        return index1Polylineindex == index2Polylineindex
-
-
-    # Loop through the polyline vertices that define the voronoi diagram and remove any voronoi edges that lie between it and its polyline vertex neighbors, removes a majority of the intersecting polylines
-    # Not used since doing line sweep straight away is quicker.
-    def removeSimpleIntersectingEdges(self, voronoiEdges, voronoiEdgepoints):
-        remainingIndices = set(range(0, len(voronoiEdges)))
-        for i in range(0, len(voronoiEdgepoints)):
-            if voronoiEdgepoints[i][0] == voronoiEdgepoints[i][1]-1 or voronoiEdgepoints[i][0] == voronoiEdgepoints[i][1]+1:
-                if self.isNeighboringIndexInSamePolyline(voronoiEdgepoints[i][0], voronoiEdgepoints[i][1]):
-                    remainingIndices.remove(i)
-            if i % 100 == 0:
-                print("Loading Bar 1:", i, "/", len(voronoiEdgepoints))
-        
-        print("Remaining: ", remainingIndices)
-        remainingEdges = []
-        remainingEdgepoints = []
-        for index in remainingIndices:
-            remainingEdges.append(voronoiEdges[index])
-            remainingEdgepoints.append(voronoiEdgepoints[index])
-        
-        return remainingEdges, remainingEdgepoints
-    
-    def removeComplexIntersectingEdges(self, voronoiVertices, voronoiEdges): #Old algorithm, has been replaced by the line sweep below this for improved time complexity
-        remainingIndices = set(range(0, len(voronoiEdges)))
-        for i in range(0, len(voronoiEdges)):
-            shouldBreak = False # I do not like this kind of construction...
-            if voronoiEdges[i][0] == -1:
-                continue
-            for polyline in self.polylines:
-                if shouldBreak:
-                    break
-                for j in range(0, len(polyline)-1):
-                    if self.isIntersecting(voronoiVertices[voronoiEdges[i][0]], voronoiVertices[voronoiEdges[i][1]], polyline[j], polyline[j+1]):
-                        remainingIndices.remove(i)
-                        shouldBreak = True
-                        break
-            if i % 100 == 0:
-                print("Loading Bar 2:", i, "/", len(voronoiEdges))
-
-        remainingEdges = []
-        for index in remainingIndices:
-            remainingEdges.append(voronoiEdges[index])
-        
-        return remainingEdges
-    
-    def removeComplexIntersectingEdgesLineSweep(self, voronoiVertices, voronoiEdges, voronoiEdgepoints): # Went from around 11 hours to under 2 minutes for this step on Boliden-Kriberg, very much worth it
+    # Plane sweep algorithm used for finding intersections between Voronoi edges and polyline lines. Removes edges that have intersections. 
+    # Has an implementation error, it should place every edge at a sorted position and only check for intersections between neighbours at each event point (and have an intersection as an event point) instead of checking for intersections with every edge in the active segments. 
+    # Read up on plane sweep in order to correct this
+    def removeComplexIntersectingEdgesLineSweep(self, voronoiVertices, voronoiEdges, voronoiEdgepoints): # Went from around 11 hours to under 2 minutes for this step on one example, very much worth it
         #Setup for the infinite edge calculation
         center = numpy.mean(self.points, axis = 0)
         minmaxPointLocations = numpy.ptp(self.points, axis = 0)
@@ -207,6 +135,7 @@ class VoronoiAlgorithm:
                 infinitePoints.append(edgeIndexVertexMapping[index][0])
         return remainingEdges, infinitePoints
     
+    # Used in method below in order to remove everything connected to an infinite edge
     def populateConnectionDictionary(self, voronoiEdges: list[list[int]], connections: dict[list[list[int]]]):
         i = 0
         for edge in voronoiEdges:
@@ -220,6 +149,7 @@ class VoronoiAlgorithm:
                 connections[edge[1]] = [[edge[0], i]]
             i += 1
     
+    # Recursive method that removes everything connected to an edge. Used for removal of everything connected to infinity
     def removeConnectedEdges(self, connections: dict[list[list[int]]], remainingIndices: set, pointIndex):
         for connection in connections[pointIndex]:
             if connection[1] in remainingIndices:
@@ -262,6 +192,7 @@ class VoronoiAlgorithm:
 
         return remainingCentrelines
     
+    # Used in method above, recursively checks the length of a path, removing its nodes if it does not exceed a minimum length
     def doesLengthOfPathExceedMinimum(self, centrelines, nodeID, minLength, length, latestNode, remainingIndices):
         if length >= minLength:
             return True
@@ -341,10 +272,12 @@ class VoronoiAlgorithm:
         print("The length of the centreline is", len(remainingCentrelines), "nodes. Removed", len(centrelines)-len(remainingCentrelines), "nodes")
         return remainingCentrelines
     
+
     # 1. Find all crossings and endpoints of the centreline and set these as nodes
     # 2. Recursively explore the centreline nodes between each connection between two crossings/endpoints
     # 3. Split the line consisting of the connected centreline nodes into segments with a length equal to the ideal distance between nodes (e.g. 5m)
-    # 4. Perform linear regression on the nodes of each segment and place a node connected to the neighboring segments/endpoint/crossing in the "middle" of the aquired line
+    # 4. Place a node connected to the neighboring segments/endpoint/crossing on the median point of the aquired line
+    # 5. Repeat 3 and 4 for each line
     def constructNodeGraphFromCentreline(self, centrelines, minLengthBetweenNodes):
         centrelineNodeIDtoIndex = {}
         for i in range(0, len(centrelines)):
@@ -373,7 +306,7 @@ class VoronoiAlgorithm:
 
                     exploredCrossingAdjacentCentrelineNodes.add(nodesBetweenCrossings[0][0])
                     exploredCrossingAdjacentCentrelineNodes.add(nodesBetweenCrossings[-1][0])
-                    centrelineNodeSegments = self.splitCentrelineNodesIntoSegments(nodesBetweenCrossings, minLengthBetweenNodes, crossing, nodeGraph[otherCrossingID])
+                    centrelineNodeSegments = self.splitCentrelineNodesIntoSegments(nodesBetweenCrossings, minLengthBetweenNodes, crossing)
                     if len(centrelineNodeSegments) == 0:
                         if otherCrossingID not in nodeGraph[crossing[0]][3]:
                             nodeGraph[crossing[0]][3].append(otherCrossingID)
@@ -403,7 +336,7 @@ class VoronoiAlgorithm:
             nodeGraphList.append(node)
         return nodeGraphList
     
-
+    # Used in the method above to find the centreline Voronoi vertices between two intersections/terminals
     def findCentrelineNodesBetweenCrossings(self, currentCentrelineNode, previousNodeID, nodesBetweenCrossings, centrelines, centrelineNodeIDtoIndex):
         if len(currentCentrelineNode[3]) > 2 or len(currentCentrelineNode[3]) == 1: # A crossing or endpoint has been reached
             return currentCentrelineNode[0]
@@ -413,8 +346,8 @@ class VoronoiAlgorithm:
             if connection != previousNodeID:
                 return self.findCentrelineNodesBetweenCrossings(centrelines[centrelineNodeIDtoIndex[connection]], currentCentrelineNode[0], nodesBetweenCrossings, centrelines, centrelineNodeIDtoIndex)
 
-
-    def splitCentrelineNodesIntoSegments(self, nodesBetweenCrossings, minLength, crossing, otherCrossing):
+    # Used in the method two methods above, splits the centreline Voronoi vertices into segments of a specified length
+    def splitCentrelineNodesIntoSegments(self, nodesBetweenCrossings, minLength, crossing):
         # This is a trivial solution that just traverses the nodes and cuts out a new segment when the minimum length has been passed. If this causes problems with nodes being too close together or far apart at the ends it may need to be changed
         segments = []
         segment = [nodesBetweenCrossings[0]]
@@ -440,6 +373,8 @@ class VoronoiAlgorithm:
         return segments
     
 
+    # Finds the angle between each pair of nodes connected to a three-way intersection node.
+    # If the most parallel angle of these pairs is less than an input parameter the intersection node will be placed on a lerped position between this pair of nodes.
     def adjustThreeWayCrossings(self, nodegraph, parallelAngleRadians):
         def lerp2D(x1, y1, x2, y2, f):
             x = (x1 * (1.0 - f)) + (x2 * f)
@@ -474,7 +409,7 @@ class VoronoiAlgorithm:
                     y2 = nodegraph[nodeGraphIDtoIndex[connection2]][2]
                     angle1 = math.atan2(y1-cY, x1-cX)
                     angle2 = math.atan2(y2-cY, x2-cX)
-                    angleParallel = abs((angle1%(2*math.pi)-angle2%(2*math.pi)) - math.pi)
+                    angleParallel = abs((angle1%(2*math.pi)-angle2%(2*math.pi)) - math.pi) # Will be zero if the nodes are completelly parallel with respect to the intersection node
 
                     if angleParallel < mostParallelAngleFound:
                         mostParallelAngleFound = angleParallel
@@ -493,6 +428,7 @@ class VoronoiAlgorithm:
 
         return nodegraph    
 
+    # Creates a Voronoi diagram from the input and runs all steps on it
     def calculateCentreline(self):
         sys.setrecursionlimit(100000)
         points = []
@@ -595,7 +531,9 @@ class VoronoiAlgorithm:
                 points.append(point)
         self.points = points
         
+        timestamp = time.time()
         voronoi = Voronoi(points)    
+        voronoitime = time.time()-timestamp  
         voronoiVertices = voronoi.vertices
         voronoiEdges = voronoi.ridge_vertices
         voronoiEdgepoints = voronoi.ridge_points
@@ -605,7 +543,10 @@ class VoronoiAlgorithm:
         remainingIndices = set(range(0, len(voronoiEdges)))
         connections = {}
         self.populateConnectionDictionary(voronoiEdges, connections)
+        timestamp = time.time()
         self.removeConnectedEdges(connections, remainingIndices, -1)
+        print("Remove outside time:", timestamp-time.time())
+        print("Voronoitime:", voronoitime)
         remainingEdges = []
         for index in remainingIndices:
             remainingEdges.append(voronoiEdges[index])

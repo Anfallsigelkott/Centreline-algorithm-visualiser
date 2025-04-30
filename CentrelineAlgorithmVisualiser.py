@@ -6,6 +6,7 @@ import math
 from tkinter import filedialog
 from tkinter import simpledialog
 from VoronoiAlgorithm import VoronoiAlgorithm
+import time
 
 class CentrelineAlgorithmVisualiser:
     def __init__(self):
@@ -13,7 +14,7 @@ class CentrelineAlgorithmVisualiser:
         self.canvas = self.figure.canvas
         
         self.axis.set_title("Centreline Algorithm Visualiser")
-        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, l = clear diagram, d = convert dxf to polyline format, a = run algorithm, c = automatic closing lines, y = even out polylines, lm = polyline, rm = closing line")
+        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, l = clear diagram, d = convert dxf to polyline format, a = run algorithm, c = automatic closing lines, y = even out polylines, lm = polyline, rm = closing line, g = load nodegraph, p = clear nodegraph")
 
         self.axis.set_xlim(0, 100)
         self.axis.set_ylim(0, 100)
@@ -31,28 +32,20 @@ class CentrelineAlgorithmVisualiser:
         self.centrelineNodes = {}
         self.centrelinePlots = []
 
+        self.loadedNodegraphNodes = {}
+        self.loadedNodegraphPlots = []
+
         self.closingLines = []
         self.closingLineStartEnds = [] # I've done these lines in three different ways... Oh well, this is only a prototyping tool
 
         self.infiniteLines = []
-
-        #button1Axis = self.figure.add_axes([0.7, 0.05, 0.1, 0.075])
-        #button2Axis = self.figure.add_axes([0.81, 0.05, 0.1, 0.075])
-        #buttonNewPolyline = Button(button1Axis, "New Polyline")
-        #buttonNewPolyline.on_clicked(self.incrementPolylineIndex)
-        #buttonUndo = Button(button2Axis, 'Undo')
-        #buttonUndo.on_clicked(self.undo)
-
-        #self.polyLines.append(self.axis.plot(self.polylineVerticesX[self.polylineIndex], self.polylineVerticesY[self.polylineIndex], marker='o', markerfacecolor='r', color='black', animated=True))
-
-        #self.axis.draw_artist(self.polyLine[0])
 
         self.canvas.mpl_connect('draw_event', self.onDraw)
         self.canvas.mpl_connect('button_press_event', self.onPressedButton)
         self.canvas.mpl_connect('key_press_event', self.onPressedKey)
         self.canvas.mpl_connect('scroll_event', self.scrollbarZoom)
 
-        self.voronoiAlgorithm = VoronoiAlgorithm(6, 4, math.pi/4)
+        self.voronoiAlgorithm = VoronoiAlgorithm(6, 4, math.pi/4) # Algorithm input parameters adjusted here
 
         plt.subplots_adjust(left=0.04, bottom=0.06, right=0.97, top=0.94)
         plt.show()
@@ -99,6 +92,8 @@ class CentrelineAlgorithmVisualiser:
             self.axis.draw_artist(closingLine[0])
         for infiniteLine in self.infiniteLines:
             self.axis.draw_artist(infiniteLine[0])
+        for loadedNodegraphline in self.loadedNodegraphPlots:
+            self.axis.draw_artist(loadedNodegraphline[0])
 
     def onPressedButton(self, event):
         if (event.inaxes is None or (event.button != MouseButton.LEFT and event.button != MouseButton.RIGHT)):
@@ -151,6 +146,11 @@ class CentrelineAlgorithmVisualiser:
             self.demoStep5()
         if event.key == '6':
             self.demoStep6()
+        if event.key == 'g':
+            self.loadNodegraph()
+        if event.key == 'p':
+            self.loadedNodegraphPlots.clear()
+            self.canvas.draw()
 
     def readPolylineFile(self):
         input = list[str]()
@@ -183,7 +183,7 @@ class CentrelineAlgorithmVisualiser:
             polylineRow = ""
             vertices = polyline.points()
             for vertex in vertices:
-               polylineRow = polylineRow + str(vertex.x) + ", " + str(vertex.y) + "; "
+               polylineRow = polylineRow + str(vertex.x) + ", " + str(vertex.y) + "; " # The axis of these may sometimes have to be changed depending on the DXF file (x + z instead of x + y for example)
             polylineRow = polylineRow[:-2] + "\n"
             outputFile.write(polylineRow)
         
@@ -231,7 +231,7 @@ class CentrelineAlgorithmVisualiser:
         self.axis.cla()
 
         self.axis.set_title("Centreline Algorithm Visualiser")
-        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, c = clear diagram, d = convert dxf to polyline format")
+        self.axis.set_xlabel("n = next/new polyline, b = previous polyline, u = undo, t = save test case, r = read file, v = display Voronoi, l = clear diagram, d = convert dxf to polyline format, a = run algorithm, c = automatic closing lines, y = even out polylines, lm = polyline, rm = closing line, g = load nodegraph, p = clear nodegraph")
 
         self.axis.set_xlim(0, 100)
         self.axis.set_ylim(0, 100)
@@ -247,6 +247,11 @@ class CentrelineAlgorithmVisualiser:
 
         self.closingLines = []
         self.closingLineStartEnds = []
+
+        self.storedPolylineIndex = 0
+        self.storedPolyLines = []
+        self.storedPolylineVerticesX = []
+        self.storedPolylineVerticesY = []
 
         self.canvas.draw()
 
@@ -270,7 +275,9 @@ class CentrelineAlgorithmVisualiser:
 
         self.voronoiAlgorithm.setPolylines(self.polylineVerticesX, self.polylineVerticesY)
         self.voronoiAlgorithm.setClosingLines(self.closingLineStartEnds)
+        timestamp = time.time()
         centrelines, infiniteLines = self.voronoiAlgorithm.calculateCentreline()
+        print("Time:", time.time() - timestamp)
         for centreline in centrelines:
             self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
         for infiniteLine in infiniteLines:
@@ -279,6 +286,7 @@ class CentrelineAlgorithmVisualiser:
         print("Voronoi Algorithm Completed")
 
     def automaticClosingLineCreation(self):
+        timestamp = time.time()
         maxClosingDistance = 25.0
         points = []
         for i in range(0, len(self.polylineVerticesX)):
@@ -329,7 +337,7 @@ class CentrelineAlgorithmVisualiser:
                             minDist = d
                             closestPoints = (strip[i], strip[j])
                 
-                return closestPoints, minDist #120, 1416  -2500, 3000
+                return closestPoints, minDist
             
             return closestPairRecursion(0, len(points))
         
@@ -342,12 +350,12 @@ class CentrelineAlgorithmVisualiser:
             self.closingLines.append(self.axis.plot([self.closingLineStartEnds[-1][0][0], self.closingLineStartEnds[-1][1][0]], [self.closingLineStartEnds[-1][0][1], self.closingLineStartEnds[-1][1][1]], color='gold', linewidth = 4, animated=True))
             points.remove(newClosingLinePoints[0])
             points.remove(newClosingLinePoints[1])
-        
+        print("Time:", time.time() - timestamp)
         self.canvas.draw()
 
     def cutOutTestCasePart(self):
         print("Cutting out part")
-        minX = -2500
+        minX = -2500 # Adjust these values manually for the X and Y bounds of the area to cut out
         minY = 1416
         maxX = 120
         maxY = 3000
@@ -373,6 +381,7 @@ class CentrelineAlgorithmVisualiser:
 
         self.canvas.draw()
 
+    # Lerps new points between every polyline point when the distance between points is too high
     def evenOutPolylines(self):
         def distance(x1, y1, x2, y2):
             return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
@@ -382,6 +391,7 @@ class CentrelineAlgorithmVisualiser:
             y = (y1 * (1.0 - f)) + (y2 * f)
             return x, y
         
+        timestamp = time.time()
         # Allows toggling between evened and unevened versions of the mine map
         if len(self.storedPolyLines) > 0:
             self.polylineIndex = self.storedPolylineIndex
@@ -401,7 +411,7 @@ class CentrelineAlgorithmVisualiser:
         self.storedPolylineVerticesX = self.polylineVerticesX[:]
         self.storedPolylineVerticesY = self.polylineVerticesY[:]
 
-        minPointDistance = 1
+        minPointDistance = 1 # 1 meter seems to work well, lower and higher both gave worse results
         newPolylineVerticesX = []
         newPolylineVerticesY = []
 
@@ -423,6 +433,8 @@ class CentrelineAlgorithmVisualiser:
             
             newPolylineVerticesX[i].append(self.polylineVerticesX[i][-1])
             newPolylineVerticesY[i].append(self.polylineVerticesY[i][-1])
+        
+        print("Time:", time.time() - timestamp)
 
         self.polylineIndex = 0
         self.polyLines = []
@@ -435,6 +447,30 @@ class CentrelineAlgorithmVisualiser:
 
         self.canvas.draw()
 
+    def loadNodegraph(self):
+        input = ""
+        with open(filedialog.askopenfilename(), "r") as file:
+            for row in file:
+                input = row
+
+        nodes = input.split(";")
+        for node in nodes:
+            nodedata = node.split(",")
+            self.loadedNodegraphNodes[nodedata[0]] = [float(nodedata[1]), float(nodedata[2]), nodedata[4:]]
+
+        lines = {}
+        for loadedGraphNodeID, loadedGraphNode in self.loadedNodegraphNodes.items():
+            for nodeID in loadedGraphNode[2]:
+                if str(loadedGraphNodeID) + ":" + str(nodeID) in lines or str(nodeID) + ":" + str(loadedGraphNodeID) in lines:
+                    continue
+                lines[str(loadedGraphNodeID) + ":" + str(nodeID)] = [[loadedGraphNode[0], self.loadedNodegraphNodes[nodeID][0]], [loadedGraphNode[1], self.loadedNodegraphNodes[nodeID][1]]]
+        
+        for _,line in lines.items():
+            self.loadedNodegraphPlots.append(self.axis.plot(line[0], line[1],  marker='^', color='blue', linestyle='dashed', animated=True))
+
+        self.canvas.draw()
+
+
 
     ##### FUNCTIONS BELOW ARE FOR DEMO PURPOSES #####
     def demoStep1(self):
@@ -444,13 +480,16 @@ class CentrelineAlgorithmVisualiser:
 
         self.voronoiAlgorithm.setPolylines(self.polylineVerticesX, self.polylineVerticesY)
         self.voronoiAlgorithm.setClosingLines(self.closingLineStartEnds)
+        timestamp = time.time()
         centrelines, infiniteLines = self.voronoiAlgorithm.demoStep1()
+        print("Time:", time.time() - timestamp)
         for centreline in centrelines:
             self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
         for infiniteLine in infiniteLines:
             self.infiniteLines.append(self.axis.plot([infiniteLine[0][0], infiniteLine[1][0]], [infiniteLine[0][1], infiniteLine[1][1]], color='red', linestyle='dashed', animated=True))
         self.displayCentreline()
         print("Step 1 Completed")
+       
 
     def demoStep2(self): # Can be run without running step 1
         self.centrelineNodes = {}
@@ -459,7 +498,9 @@ class CentrelineAlgorithmVisualiser:
 
         self.voronoiAlgorithm.setPolylines(self.polylineVerticesX, self.polylineVerticesY)
         self.voronoiAlgorithm.setClosingLines(self.closingLineStartEnds)
+        timestamp = time.time()
         centrelines, infiniteLines = self.voronoiAlgorithm.demoStep2()
+        print("Time:", time.time() - timestamp)
         for centreline in centrelines:
             self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
         for infiniteLine in infiniteLines:
@@ -471,7 +512,9 @@ class CentrelineAlgorithmVisualiser:
         self.centrelineNodes = {}
         self.centrelinePlots = []
 
+        timestamp = time.time()
         centrelines, _ = self.voronoiAlgorithm.demoStep3()
+        print("Time:", time.time() - timestamp)
         for centreline in centrelines:
             self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
 
@@ -482,7 +525,9 @@ class CentrelineAlgorithmVisualiser:
         self.centrelineNodes = {}
         self.centrelinePlots = []
 
+        timestamp = time.time()
         centrelines, _ = self.voronoiAlgorithm.demoStep4()
+        print("Time:", time.time() - timestamp)
         for centreline in centrelines:
             self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
 
@@ -493,7 +538,9 @@ class CentrelineAlgorithmVisualiser:
         self.centrelineNodes = {}
         self.centrelinePlots = []
 
+        timestamp = time.time()
         centrelines, _ = self.voronoiAlgorithm.demoStep5()
+        print("Time:", time.time() - timestamp)
         for centreline in centrelines:
             self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
 
@@ -504,7 +551,9 @@ class CentrelineAlgorithmVisualiser:
         self.centrelineNodes = {}
         self.centrelinePlots = []
 
+        timestamp = time.time()
         centrelines, _ = self.voronoiAlgorithm.demoStep6()
+        print("Time:", time.time() - timestamp)
         for centreline in centrelines:
             self.addCentrelineNode(centreline[0], centreline[1], centreline[2], centreline[3])
 
@@ -512,21 +561,5 @@ class CentrelineAlgorithmVisualiser:
         print("Step 6 Completed")
                             
 
-
-
-
-
-
-
 algorithmVisualiser = CentrelineAlgorithmVisualiser()
-#algorithmVisualiser.readPolylineFile("output.txt")
-#algorithmVisualiser.convertDXFToPolylineFile()
-
-#algorithmVisualiser.addCentrelineNode(1, 20.0, 50.0, [2])
-#algorithmVisualiser.addCentrelineNode(2, 30, 50, [1, 3, 4])
-#algorithmVisualiser.addCentrelineNode(3, 25, 45, [2])
-#algorithmVisualiser.addCentrelineNode(4, 40, 55, [2])
-#algorithmVisualiser.displayCentreline()
-
-#algorithmVisualiser.displayVoronoi()
 
